@@ -32,8 +32,11 @@ from torchtitan.parallelisms.parallel_dims import ParallelDims
 
 
 # NOTE(lty): experimental for the PT-D 24 research internship project
-def parallelize_llama_torch_spmd(
-    model, world_mesh, parallel_dims, job_config: JobConfig
+def torch_spmd_parallelize(
+    model: nn.Module,
+    world_mesh: DeviceMesh,
+    parallel_dims: ParallelDims,
+    job_config: JobConfig,
 ):
     assert not parallel_dims.pp_enabled, "PP not supported by torch_spmd yet"
     assert not parallel_dims.tp_enabled, "TP not supported by torch_spmd yet"
@@ -42,8 +45,6 @@ def parallelize_llama_torch_spmd(
 
     if parallel_dims.dp_enabled:
         from torch_spmd.data_parallel import data_parallel, MixedPrecisionPolicy
-
-        torch._inductor.config.simplefsdp.enable_bucket = False
 
         mp_policy = MixedPrecisionPolicy(
             param_dtype=TORCH_DTYPE_MAP[job_config.training.mixed_precision_param],
@@ -76,9 +77,7 @@ def parallelize_llama(
     """
     # NOTE(lty): experimental for the PT-D 24 research internship project
     if job_config.experimental.torch_spmd:
-        return parallelize_llama_torch_spmd(
-            model, world_mesh, parallel_dims, job_config
-        )
+        return torch_spmd_parallelize(model, world_mesh, parallel_dims, job_config)
 
     if parallel_dims.tp_enabled:
         if (
