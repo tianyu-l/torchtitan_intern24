@@ -42,7 +42,7 @@ def pipeline_llama(
 
     pp_schedule = build_pipeline_schedule(job_config, stages, loss_fn)
 
-    return pp_schedule, models
+    return pp_schedule, stages, models
 
 
 def _llama_trace_input(job_config: JobConfig, model_config: ModelArgs, device="meta"):

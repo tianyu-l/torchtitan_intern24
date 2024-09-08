@@ -53,7 +53,6 @@ def torch_spmd_parallelize(
     ac_config = job_config.activation_checkpoint
     if ac_config.mode != "none":
         apply_ac(model, ac_config)
-        logger.info(f"Applied {ac_config.mode} activation checkpointing to the model")
 
     if parallel_dims.dp_enabled:
         from torch_spmd.data_parallel import data_parallel, MixedPrecisionPolicy
