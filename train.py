@@ -146,20 +146,24 @@ def main(job_config: JobConfig):
     # apply parallelisms and initialization
     if parallel_dims.pp_enabled:
         # apply PT-D Pipeline Parallel
-        pp_schedule, model_parts = models_pipelining_fns[model_name](
+        pp_schedule, stages, model_parts = models_pipelining_fns[model_name](
             model, pp_mesh, parallel_dims, job_config, device, model_config, loss_fn
         )
 
         # For PP with looped schedules, each item in model_parts is one stage-model-chunk.
         # We need to iterate through model_parts to apply SPMD parallelisms, compilation,
         # optimizer, and checkpointing
-        for m in model_parts:
+        for i, m in enumerate(model_parts):
             # apply SPMD-style PT-D techniques
             models_parallelize_fns[model_name](m, world_mesh, parallel_dims, job_config)
             m.to_empty(device="cuda")
             with disable_data_parallel() if job_config.experimental.torch_spmd else contextlib.nullcontext():
                 m.init_weights()
             m.train()
+
+            # TODO(lty): need to find a better way to apply torch.compile
+            if job_config.training.compile:
+                stages[i].submod = torch.compile(m, fullgraph=True)
     else:
         # apply PT-D Tensor Parallel, activation checkpointing, torch.compile, Data Parallel
         model = models_parallelize_fns[model_name](
