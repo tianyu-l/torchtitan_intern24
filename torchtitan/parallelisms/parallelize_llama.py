@@ -29,7 +29,7 @@ from torch.distributed.tensor.parallel import (
 from torchtitan.config_manager import JobConfig, TORCH_DTYPE_MAP
 from torchtitan.logging import logger
 from torchtitan.parallelisms.parallel_dims import ParallelDims
-
+import numpy as np
 
 # NOTE(lty): experimental for the PT-D 24 research internship project
 def torch_spmd_parallelize(
@@ -38,8 +38,36 @@ def torch_spmd_parallelize(
     parallel_dims: ParallelDims,
     job_config: JobConfig,
 ):
-    torch._inductor.config.simplefsdp.enable_reorder = True
+    random_seed = 1 # or any of your favorite number
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(random_seed)
+
+    torch._dynamo.config.capture_scalar_outputs = True
+    torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
     torch._inductor.config.simplefsdp.enable_bucket = True
+    torch._inductor.config.simplefsdp.enable_reorder = True
+    torch._inductor.config.simplefsdp.transformer_block_bucket = True
+    #torch._inductor.config.simplefsdp.greedy_auto_bucket = True
+    torch._dynamo.config.accumulated_cache_size_limit = 512
+
+    torch._inductor.config.simplefsdp.fsdp_world_size = world_mesh["dp"].size()
+    if "tp" in world_mesh.mesh_dim_names:
+        torch._inductor.config.simplefsdp.tp_world_size = world_mesh["tp"].size()
+    if "pp" in world_mesh.mesh_dim_names:
+        torch._inductor.config.simplefsdp.pp_world_size = world_mesh["pp"].size()
+
+    print("enable reorder", torch._inductor.config.simplefsdp.enable_reorder)
+    if torch._inductor.config.simplefsdp.enable_bucket:
+        if torch._inductor.config.simplefsdp.transformer_block_bucket:
+            print("enable block-level bucket")
+        elif torch._inductor.config.simplefsdp.greedy_auto_bucket:
+            print("enable greedy auto bucket")
+    else:
+        print("enable reorder", False)
 
     if parallel_dims.tp_enabled:
         apply_tp(
@@ -146,7 +174,7 @@ def parallelize_llama(
                 enable_compile=job_config.training.compile,
                 enable_compiled_autograd=job_config.experimental.enable_compiled_autograd,
             )
-
+    return model
 
 def apply_tp(
     model: nn.Module,
