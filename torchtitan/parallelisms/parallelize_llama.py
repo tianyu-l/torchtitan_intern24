@@ -48,24 +48,22 @@ def torch_spmd_parallelize(
     torch._dynamo.config.capture_scalar_outputs = True
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
-    torch._inductor.config.simplefsdp.enable_bucket = True
+    torch._inductor.config.simplefsdp.bucket_mode = "greedy"
     torch._inductor.config.simplefsdp.enable_reorder = True
-    torch._inductor.config.simplefsdp.transformer_block_bucket = True
-    #torch._inductor.config.simplefsdp.greedy_auto_bucket = True
     torch._dynamo.config.accumulated_cache_size_limit = 512
 
-    torch._inductor.config.simplefsdp.fsdp_world_size = world_mesh["dp"].size()
+    torch._inductor.config.simplefsdp.fsdp_degree = world_mesh["dp"].size()
     if "tp" in world_mesh.mesh_dim_names:
-        torch._inductor.config.simplefsdp.tp_world_size = world_mesh["tp"].size()
+        torch._inductor.config.simplefsdp.tp_degree = world_mesh["tp"].size()
     if "pp" in world_mesh.mesh_dim_names:
-        torch._inductor.config.simplefsdp.pp_world_size = world_mesh["pp"].size()
+        torch._inductor.config.simplefsdp.pp_degree = world_mesh["pp"].size()
+    torch._inductor.config.simplefsdp.device_mesh = world_mesh.mesh
 
     print("enable reorder", torch._inductor.config.simplefsdp.enable_reorder)
-    if torch._inductor.config.simplefsdp.enable_bucket:
-        if torch._inductor.config.simplefsdp.transformer_block_bucket:
-            print("enable block-level bucket")
-        elif torch._inductor.config.simplefsdp.greedy_auto_bucket:
-            print("enable greedy auto bucket")
+    if torch._inductor.config.simplefsdp.bucket_mode == "transformer_block":
+        print("enable block-level bucket")
+    elif torch._inductor.config.simplefsdp.bucket_mode == "greedy":
+        print("enable greedy auto bucket")
     else:
         print("enable reorder", False)
 
