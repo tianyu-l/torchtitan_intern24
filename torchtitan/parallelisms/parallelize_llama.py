@@ -50,7 +50,6 @@ def torch_spmd_parallelize(
 
     torch._inductor.config.simplefsdp.bucket_mode = "greedy"
     torch._inductor.config.simplefsdp.enable_reorder = True
-    torch._dynamo.config.accumulated_cache_size_limit = 512
 
     torch._inductor.config.simplefsdp.fsdp_degree = world_mesh["dp"].size()
     if "tp" in world_mesh.mesh_dim_names:

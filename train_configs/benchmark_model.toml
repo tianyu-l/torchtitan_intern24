@@ -19,10 +19,10 @@ save_tb_folder = "tb"
 
 [model]
 # name = "resnet50"
-name = "hf_GPT2"
+name = "llava"
 
 [training]
-batch_size = 8
+batch_size = 2
 max_norm = 1.0  # grad norm clipping
 steps = 10
 data_parallel_degree = -1
@@ -33,7 +33,7 @@ mixed_precision_reduce = "bfloat16"
 # mixed_precision_reduce = "float32"
 
 [experimental]
-torch_spmd = true
+torch_spmd = false
 
 [activation_checkpoint]
 mode = 'none'  # ['none', 'selective', 'full']
