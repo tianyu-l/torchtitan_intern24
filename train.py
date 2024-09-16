@@ -12,8 +12,9 @@ from datetime import timedelta
 
 import torch
 from torch.distributed.elastic.multiprocessing.errors import record
-
+from torch.distributed._tensor import DTensor
 # context needed by meta-init with torch_spmd
+from torch_spmd.data_parallel import disable_data_parallel
 
 from torchtitan import utils
 from torchtitan.checkpoint import CheckpointManager, TrainState
@@ -145,6 +146,8 @@ def main(job_config: JobConfig):
 
     # loss function to be shared by Pipeline Parallel and SPMD training
     def loss_fn(pred, labels):
+        if isinstance(pred, DTensor):
+            pred._local_tensor = pred._local_tensor.contiguous()
         return torch.nn.functional.cross_entropy(
             pred.flatten(0, 1), labels.flatten(0, 1)
         )
@@ -163,17 +166,13 @@ def main(job_config: JobConfig):
             # apply SPMD-style PT-D techniques
             models_parallelize_fns[model_name](m, world_mesh, parallel_dims, job_config)
             m.to_empty(device="cuda")
-            if job_config.experimental.torch_spmd:
-                from torch_spmd.data_parallel import disable_data_parallel
-                with disable_data_parallel():
-                    model.init_weights()
-            else:
-                with contextlib.nullcontext():
-                    model.init_weights()
+            with disable_data_parallel() if job_config.experimental.torch_spmd else contextlib.nullcontext():
+                m.init_weights()
             m.train()
 
             # TODO(lty): need to find a better way to apply torch.compile
-            if job_config.training.compile:
+            # torch._dynamo.config.cache_size_limit = 128
+            if job_config.training.compile and job_config.experimental.torch_spmd:
                 stages[i].submod = torch.compile(m, fullgraph=True)
     else:
         # apply PT-D Tensor Parallel, activation checkpointing, torch.compile, Data Parallel
@@ -184,13 +183,8 @@ def main(job_config: JobConfig):
         # move sharded model to CPU/GPU and initialize weights via DTensor
         init_device = "cpu" if job_config.checkpoint.create_seed_checkpoint else "cuda"
         model.to_empty(device=init_device)
-        if job_config.experimental.torch_spmd:
-            from torch_spmd.data_parallel import disable_data_parallel
-            with disable_data_parallel():
-                model.init_weights()
-        else:
-            with contextlib.nullcontext():
-                model.init_weights()
+        with disable_data_parallel() if job_config.experimental.torch_spmd else contextlib.nullcontext():
+            model.init_weights()
            
             
         model.train()

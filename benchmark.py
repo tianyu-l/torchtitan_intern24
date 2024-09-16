@@ -108,32 +108,30 @@ def main(job_config: JobConfig):
         # apply PT-D Tensor Parallel, activation checkpointing, torch.compile, Data Parallel
         model = torch_spmd_parallelize(model, world_mesh, parallel_dims, job_config)
     else:
-        model = torch.compile(model, fullgraph=True)
+       
         from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
         param_dtype=TORCH_DTYPE_MAP[job_config.training.mixed_precision_param],
         reduce_dtype=TORCH_DTYPE_MAP[job_config.training.mixed_precision_reduce]
         mp_policy = MixedPrecisionPolicy(param_dtype=param_dtype, reduce_dtype=reduce_dtype)
         fsdp_config = {"mesh": dp_mesh, "mp_policy": mp_policy}
-        for transformer_block in model.children():
-            # As an optimization, do not reshard after forward for the last
-            # transformer block since FSDP would prefetch it immediately
-            for subblock in transformer_block.children():
-                fully_shard(
-                    subblock,
-                    **fsdp_config,
-                    reshard_after_forward=False,
-                )
-            fully_shard(
-                transformer_block,
-                **fsdp_config,
-                reshard_after_forward=False,
-            )
-        fully_shard(model, **fsdp_config, reshard_after_forward=False)
+        for name, block in model.named_children():
+            block = torch.compile(block)
+            model.register_module(name, block)
+        # model = torch.compile(model)
+        # fully_shard(model, **fsdp_config, reshard_after_forward=False)
         
+        for name, block in model.named_children():
+            fully_shard(
+               block,
+               **fsdp_config,
+               reshard_after_forward=True,
+            )
+        fully_shard(model, **fsdp_config, reshard_after_forward=True)
     # update model and optimizer after applying parallelisms
     benchmark_model.set_module(model)
     optimizer = benchmark_model.get_optimizer()
-    optimizer.add_param_group({"params": model.parameters()})
+    if optimizer is not None:
+        optimizer.add_param_group({"params": model.parameters()})
 
     model.train()
 

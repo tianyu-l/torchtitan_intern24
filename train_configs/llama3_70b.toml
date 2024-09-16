@@ -37,10 +37,9 @@ compile = true
 dataset = "c4"
 
 [experimental]
-#pipeline_parallel_degree = 4
-#pipeline_parallel_split_points="layers.10,layers.20,layers.30,layers.40,layers.50,layers.60,layers.70"
-#pipeline_parallel_schedule="interleaved_1f1b"
-torch_spmd = false
+pipeline_parallel_degree = 8
+pipeline_parallel_split_points=["layers.10","layers.20","layers.30","layers.40","layers.50","layers.60","layers.70"]
+torch_spmd = true
 enable_async_tensor_parallel = true
 
 [checkpoint]

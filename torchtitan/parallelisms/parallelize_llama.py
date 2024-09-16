@@ -48,7 +48,7 @@ def torch_spmd_parallelize(
     torch._dynamo.config.capture_scalar_outputs = True
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
-    torch._inductor.config.simplefsdp.bucket_mode = "greedy"
+    torch._inductor.config.simplefsdp.bucket_mode = "none"
     torch._inductor.config.simplefsdp.enable_reorder = True
 
     torch._inductor.config.simplefsdp.fsdp_degree = world_mesh["dp"].size()
@@ -56,7 +56,7 @@ def torch_spmd_parallelize(
         torch._inductor.config.simplefsdp.tp_degree = world_mesh["tp"].size()
     if "pp" in world_mesh.mesh_dim_names:
         torch._inductor.config.simplefsdp.pp_degree = world_mesh["pp"].size()
-    torch._inductor.config.simplefsdp.device_mesh = world_mesh.mesh
+    torch._inductor.config.simplefsdp.device_mesh = world_mesh.mesh.tolist()
 
     print("enable reorder", torch._inductor.config.simplefsdp.enable_reorder)
     if torch._inductor.config.simplefsdp.bucket_mode == "transformer_block":
@@ -64,7 +64,7 @@ def torch_spmd_parallelize(
     elif torch._inductor.config.simplefsdp.bucket_mode == "greedy":
         print("enable greedy auto bucket")
     else:
-        print("enable reorder", False)
+        print("enable bucket", False)
 
     if parallel_dims.tp_enabled:
         apply_tp(
@@ -171,6 +171,7 @@ def parallelize_llama(
                 enable_compile=job_config.training.compile,
                 enable_compiled_autograd=job_config.experimental.enable_compiled_autograd,
             )
+    #model = torch.compile(model)
     return model
 
 def apply_tp(
@@ -354,10 +355,12 @@ def apply_compile(model: nn.Module):
     Apply torch.compile to each TransformerBlock, which makes compilation efficient due to
     repeated structure. Alternatively one can compile the whole model (after applying DP).
     """
+    torch._dynamo.config.cache_size_limit = 128
     for layer_id, transformer_block in model.layers.named_children():
-        transformer_block = torch.compile(transformer_block, fullgraph=True)
+        #transformer_block = torch.compile(transformer_block, fullgraph=True)
+        transformer_block = torch.compile(transformer_block)
         model.layers.register_module(layer_id, transformer_block)
-
+    #model = torch.compile(model)
     logger.info("Compiling each TransformerBlock with torch.compile")
 
 
