@@ -6,7 +6,7 @@ description = "Llama 3 debug training"
 use_for_integration_test = true
 
 [profiling]
-enable_profiling = true
+enable_profiling = false
 save_traces_folder = "profile_trace"
 profile_freq = 10
 enable_memory_snapshot = false
@@ -43,7 +43,7 @@ dataset = "c4_test"  # supported datasets: c4_test (2K), c4 (177M)
 [experimental]
 pipeline_parallel_degree = 2
 pipeline_parallel_split_points = ["layers.4"]
-enable_async_tensor_parallel = true
+enable_async_tensor_parallel = false
 torch_spmd = true
 
 [checkpoint]

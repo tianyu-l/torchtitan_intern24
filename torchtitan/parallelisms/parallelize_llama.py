@@ -29,7 +29,7 @@ from torch.distributed.tensor.parallel import (
 from torchtitan.config_manager import JobConfig, TORCH_DTYPE_MAP
 from torchtitan.logging import logger
 from torchtitan.parallelisms.parallel_dims import ParallelDims
-import numpy as np
+
 
 # NOTE(lty): experimental for the PT-D 24 research internship project
 def torch_spmd_parallelize(
@@ -38,9 +38,11 @@ def torch_spmd_parallelize(
     parallel_dims: ParallelDims,
     job_config: JobConfig,
 ):
+    # ensure full graph compile on non-llama models
     torch._dynamo.config.capture_scalar_outputs = True
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
+    # simple fsdp configs
     torch._inductor.config.simplefsdp.bucket_mode = "none"
     torch._inductor.config.simplefsdp.enable_reorder = False
     torch._inductor.config.simplefsdp.time_coff = 5
@@ -347,12 +349,11 @@ def apply_compile(model: nn.Module):
     Apply torch.compile to each TransformerBlock, which makes compilation efficient due to
     repeated structure. Alternatively one can compile the whole model (after applying DP).
     """
+    # avoid recompiling error on 70B model
     torch._dynamo.config.cache_size_limit = 128
     for layer_id, transformer_block in model.layers.named_children():
-        #transformer_block = torch.compile(transformer_block, fullgraph=True)
         transformer_block = torch.compile(transformer_block)
         model.layers.register_module(layer_id, transformer_block)
-    #model = torch.compile(model)
     logger.info("Compiling each TransformerBlock with torch.compile")
 
 

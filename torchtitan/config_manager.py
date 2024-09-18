@@ -344,7 +344,7 @@ class JobConfig:
         self.parser.add_argument(
             "--training.gc_freq",
             type=int,
-            default=100,
+            default=50,
             help="Python garbage control scheduling interval, in steps",
         )
 
