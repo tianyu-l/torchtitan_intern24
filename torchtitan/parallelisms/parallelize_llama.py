@@ -38,24 +38,18 @@ def torch_spmd_parallelize(
     parallel_dims: ParallelDims,
     job_config: JobConfig,
 ):
-    random_seed = 1 # or any of your favorite number
-    torch.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    np.random.seed(random_seed)
-
     torch._dynamo.config.capture_scalar_outputs = True
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
     torch._inductor.config.simplefsdp.bucket_mode = "none"
-    torch._inductor.config.simplefsdp.enable_reorder = True
+    torch._inductor.config.simplefsdp.enable_reorder = False
+    torch._inductor.config.simplefsdp.time_coff = 5
+    torch._inductor.config.simplefsdp.forward_memory_constraint = 1000
+    torch._inductor.config.simplefsdp.backward_memory_constraint = 1000
 
-    torch._inductor.config.simplefsdp.fsdp_degree = world_mesh["dp"].size()
-    if "tp" in world_mesh.mesh_dim_names:
-        torch._inductor.config.simplefsdp.tp_degree = world_mesh["tp"].size()
-    if "pp" in world_mesh.mesh_dim_names:
-        torch._inductor.config.simplefsdp.pp_degree = world_mesh["pp"].size()
+    torch._inductor.config.simplefsdp.fsdp_degree = parallel_dims.dp
+    torch._inductor.config.simplefsdp.tp_degree = parallel_dims.tp
+    torch._inductor.config.simplefsdp.pp_degree = parallel_dims.pp
     torch._inductor.config.simplefsdp.device_mesh = world_mesh.mesh.tolist()
 
     print("enable reorder", torch._inductor.config.simplefsdp.enable_reorder)
@@ -63,8 +57,7 @@ def torch_spmd_parallelize(
         print("enable block-level bucket")
     elif torch._inductor.config.simplefsdp.bucket_mode == "greedy":
         print("enable greedy auto bucket")
-    else:
-        print("enable bucket", False)
+        print("time coff", torch._inductor.config.simplefsdp.time_coff)
 
     if parallel_dims.tp_enabled:
         apply_tp(
@@ -171,7 +164,6 @@ def parallelize_llama(
                 enable_compile=job_config.training.compile,
                 enable_compiled_autograd=job_config.experimental.enable_compiled_autograd,
             )
-    #model = torch.compile(model)
     return model
 
 def apply_tp(
@@ -389,7 +381,7 @@ def apply_fsdp(
         if pp_enabled:
             # For PP, do not reshard after forward to avoid per-microbatch
             # all-gathers, which can be expensive and non-overlapped
-            reshard_after_forward = False
+            reshard_after_forward = True
         else:
             # As an optimization, do not reshard after forward for the last
             # transformer block since FSDP would prefetch it immediately
