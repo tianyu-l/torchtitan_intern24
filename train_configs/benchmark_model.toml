@@ -5,7 +5,7 @@ dump_folder = "./outputs"
 description = "torchbenchmark training"
 
 [profiling]
-enable_profiling = true
+enable_profiling = false
 save_traces_folder = "profile_trace"
 profile_freq = 10
 enable_memory_snapshot = false
@@ -18,18 +18,18 @@ enable_tensorboard = false
 save_tb_folder = "tb"
 
 [model]
-# name = "resnet50""llava"
-name = "resnet152"
+# name = "resnet50"
+name = "hf_GPT2"
 
 [training]
-batch_size = 960
+batch_size = 8
 max_norm = 1.0  # grad norm clipping
 steps = 10
 data_parallel_degree = -1
 compile = true
 
 [experimental]
-torch_spmd = false
+torch_spmd = true
 
 [activation_checkpoint]
 mode = 'none'  # ['none', 'selective', 'full']
