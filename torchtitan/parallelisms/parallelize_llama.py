@@ -43,15 +43,16 @@ def torch_spmd_parallelize(
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
     # simple fsdp configs
-    torch._inductor.config.simplefsdp.bucket_mode = "none"
-    torch._inductor.config.simplefsdp.enable_reorder = False
+    torch._inductor.config.simplefsdp.bucket_mode = "greedy"
+    torch._inductor.config.simplefsdp.enable_reorder = True
     torch._inductor.config.simplefsdp.time_coff = 5
     torch._inductor.config.simplefsdp.forward_memory_constraint = 1000
     torch._inductor.config.simplefsdp.backward_memory_constraint = 1000
-
     torch._inductor.config.simplefsdp.fsdp_degree = parallel_dims.dp
-    torch._inductor.config.simplefsdp.tp_degree = parallel_dims.tp
-    torch._inductor.config.simplefsdp.pp_degree = parallel_dims.pp
+    if parallel_dims.tp > 1:
+        torch._inductor.config.simplefsdp.tp_degree = parallel_dims.tp
+    if parallel_dims.pp > 1:
+        torch._inductor.config.simplefsdp.pp_degree = parallel_dims.pp
     torch._inductor.config.simplefsdp.device_mesh = world_mesh.mesh.tolist()
 
     print("enable reorder", torch._inductor.config.simplefsdp.enable_reorder)
