@@ -45,9 +45,9 @@ def torch_spmd_parallelize(
     # simple fsdp configs
     torch._inductor.config.simplefsdp.bucket_mode = "greedy"
     torch._inductor.config.simplefsdp.enable_reorder = True
-    torch._inductor.config.simplefsdp.time_coff = 5
-    torch._inductor.config.simplefsdp.forward_memory_constraint = 1000
-    torch._inductor.config.simplefsdp.backward_memory_constraint = 1000
+    torch._inductor.config.simplefsdp.ag_comm_time_multiplier = 5
+    torch._inductor.config.simplefsdp.rs_comm_time_multiplier = 5
+    torch._inductor.config.simplefsdp.memory_constraint = 1000
     torch._inductor.config.simplefsdp.fsdp_degree = parallel_dims.dp
     if parallel_dims.tp > 1:
         torch._inductor.config.simplefsdp.tp_degree = parallel_dims.tp
@@ -60,7 +60,8 @@ def torch_spmd_parallelize(
         print("enable block-level bucket")
     elif torch._inductor.config.simplefsdp.bucket_mode == "greedy":
         print("enable greedy auto bucket")
-        print("time coff", torch._inductor.config.simplefsdp.time_coff)
+        print("ag_comm_time_multiplier", torch._inductor.config.simplefsdp.ag_comm_time_multiplier)
+        print("rs_comm_time_multiplier", torch._inductor.config.simplefsdp.rs_comm_time_multiplier)
 
     if parallel_dims.tp_enabled:
         apply_tp(
@@ -94,11 +95,9 @@ def torch_spmd_parallelize(
         logger.info("Applied Simple FSDP to the model")
 
     if job_config.training.compile:
-        model = torch.compile(model, fullgraph=True)
+        model = torch.compile(model)
         logger.info("Compiling with torch.compile")
-
     return model
-
 
 def parallelize_llama(
     model: nn.Module,
@@ -167,7 +166,7 @@ def parallelize_llama(
                 enable_compile=job_config.training.compile,
                 enable_compiled_autograd=job_config.experimental.enable_compiled_autograd,
             )
-    return model
+
 
 def apply_tp(
     model: nn.Module,
@@ -353,7 +352,7 @@ def apply_compile(model: nn.Module):
     # avoid recompiling error on 70B model
     torch._dynamo.config.cache_size_limit = 128
     for layer_id, transformer_block in model.layers.named_children():
-        transformer_block = torch.compile(transformer_block)
+        transformer_block = torch.compile(transformer_block, fullgraph=True)
         model.layers.register_module(layer_id, transformer_block)
     logger.info("Compiling each TransformerBlock with torch.compile")
 
@@ -383,6 +382,7 @@ def apply_fsdp(
         if pp_enabled:
             # For PP, do not reshard after forward to avoid per-microbatch
             # all-gathers, which can be expensive and non-overlapped
+            # NOTE: set reshard_after_forward to True for fair comparison with simple FSDP
             reshard_after_forward = True
         else:
             # As an optimization, do not reshard after forward for the last

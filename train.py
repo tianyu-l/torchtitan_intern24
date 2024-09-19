@@ -7,7 +7,6 @@
 import contextlib
 import os
 import time
-import numpy as np
 from datetime import timedelta
 
 import torch
@@ -140,6 +139,7 @@ def main(job_config: JobConfig):
 
     # loss function to be shared by Pipeline Parallel and SPMD training
     def loss_fn(pred, labels):
+        # temporary fix to enable async TP for full model compile
         if isinstance(pred, DTensor):
             pred._local_tensor = pred._local_tensor.contiguous()
         return torch.nn.functional.cross_entropy(
@@ -179,8 +179,6 @@ def main(job_config: JobConfig):
         model.to_empty(device=init_device)
         with disable_data_parallel() if job_config.experimental.torch_spmd else contextlib.nullcontext():
             model.init_weights()
-           
-            
         model.train()
 
         model_parts = [model]
