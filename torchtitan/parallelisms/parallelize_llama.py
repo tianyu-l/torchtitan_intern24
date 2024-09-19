@@ -356,7 +356,7 @@ def apply_compile(model: nn.Module):
     for layer_id, transformer_block in model.layers.named_children():
         transformer_block = torch.compile(transformer_block, fullgraph=True)
         model.layers.register_module(layer_id, transformer_block)
-        
+
     logger.info("Compiling each TransformerBlock with torch.compile")
 
 
