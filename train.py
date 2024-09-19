@@ -10,8 +10,9 @@ import time
 from datetime import timedelta
 
 import torch
-from torch.distributed.elastic.multiprocessing.errors import record
 from torch.distributed._tensor import DTensor
+from torch.distributed.elastic.multiprocessing.errors import record
+
 # context needed by meta-init with torch_spmd
 from torch_spmd.data_parallel import disable_data_parallel
 

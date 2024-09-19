@@ -55,8 +55,14 @@ def torch_spmd_parallelize(
         print("enable block-level bucket")
     elif torch._inductor.config.simplefsdp.bucket_mode == "greedy":
         print("enable greedy auto bucket")
-        print("ag_comm_time_multiplier", torch._inductor.config.simplefsdp.ag_comm_time_multiplier)
-        print("rs_comm_time_multiplier", torch._inductor.config.simplefsdp.rs_comm_time_multiplier)
+        print(
+            "ag_comm_time_multiplier",
+            torch._inductor.config.simplefsdp.ag_comm_time_multiplier,
+        )
+        print(
+            "rs_comm_time_multiplier",
+            torch._inductor.config.simplefsdp.rs_comm_time_multiplier,
+        )
 
     if parallel_dims.tp_enabled:
         apply_tp(
