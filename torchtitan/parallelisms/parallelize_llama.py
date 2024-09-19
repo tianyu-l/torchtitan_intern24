@@ -95,9 +95,11 @@ def torch_spmd_parallelize(
         logger.info("Applied Simple FSDP to the model")
 
     if job_config.training.compile:
-        model = torch.compile(model)
+        model = torch.compile(model, fullgraph=True)
         logger.info("Compiling with torch.compile")
+
     return model
+
 
 def parallelize_llama(
     model: nn.Module,
@@ -354,6 +356,7 @@ def apply_compile(model: nn.Module):
     for layer_id, transformer_block in model.layers.named_children():
         transformer_block = torch.compile(transformer_block, fullgraph=True)
         model.layers.register_module(layer_id, transformer_block)
+        
     logger.info("Compiling each TransformerBlock with torch.compile")
 
 
