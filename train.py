@@ -165,7 +165,6 @@ def main(job_config: JobConfig):
             m.train()
 
             # TODO(lty): need to find a better way to apply torch.compile
-            # torch._dynamo.config.cache_size_limit = 128
             if job_config.training.compile and job_config.experimental.torch_spmd:
                 stages[i].submod = torch.compile(m, fullgraph=True)
     else:

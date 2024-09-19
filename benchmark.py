@@ -78,7 +78,6 @@ def main(job_config: JobConfig):
         batch_size=job_config.training.batch_size,
         extra_args=[],
     )
-    #model_flops = get_model_flops(config)
     benchmark_model = load_model(config)
     model, _ = benchmark_model.get_module()
 
