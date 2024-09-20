@@ -43,11 +43,11 @@ def torch_spmd_parallelize(
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
     # simple fsdp configs
-    torch._inductor.config.simplefsdp.bucket_mode = "greedy"
+    torch._inductor.config.simplefsdp.bucket_mode = "transformer_block"
     torch._inductor.config.simplefsdp.enable_reorder = True
-    torch._inductor.config.simplefsdp.fsdp_degree = parallel_dims.dp
-    torch._inductor.config.simplefsdp.tp_degree = parallel_dims.tp
-    torch._inductor.config.simplefsdp.pp_degree = parallel_dims.pp
+    torch._inductor.config.simplefsdp.degree = parallel_dims.dp
+    torch._inductor.config.simplefsdp.tp_enabled = parallel_dims.tp_enabled
+    torch._inductor.config.simplefsdp.pp_enabled = parallel_dims.pp_enabled
     torch._inductor.config.simplefsdp.device_mesh = world_mesh.mesh.tolist()
 
     print("enable reorder", torch._inductor.config.simplefsdp.enable_reorder)
@@ -352,7 +352,7 @@ def apply_compile(model: nn.Module):
     Apply torch.compile to each TransformerBlock, which makes compilation efficient due to
     repeated structure. Alternatively one can compile the whole model (after applying DP).
     """
-    # avoid recompiling error on 70B model
+    # TODO(ruisizhang123): avoid recompiling error on 70B model
     torch._dynamo.config.cache_size_limit = 128
     for layer_id, transformer_block in model.layers.named_children():
         transformer_block = torch.compile(transformer_block, fullgraph=True)

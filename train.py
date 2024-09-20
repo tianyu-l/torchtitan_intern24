@@ -140,7 +140,7 @@ def main(job_config: JobConfig):
 
     # loss function to be shared by Pipeline Parallel and SPMD training
     def loss_fn(pred, labels):
-        # temporary fix to enable async TP for full model compile
+        # TODO(ruisizhang123): temporary fix to enable async TP for full model compile
         if isinstance(pred, DTensor):
             pred._local_tensor = pred._local_tensor.contiguous()
         return torch.nn.functional.cross_entropy(
