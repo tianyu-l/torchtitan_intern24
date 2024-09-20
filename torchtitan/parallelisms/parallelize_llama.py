@@ -38,8 +38,31 @@ def torch_spmd_parallelize(
     parallel_dims: ParallelDims,
     job_config: JobConfig,
 ):
+    # ensure full graph compile on non-llama models
+    torch._dynamo.config.capture_scalar_outputs = True
+    torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+    # simple fsdp configs
+    torch._inductor.config.simplefsdp.bucket_mode = "greedy"
     torch._inductor.config.simplefsdp.enable_reorder = True
-    torch._inductor.config.simplefsdp.enable_bucket = True
+    torch._inductor.config.simplefsdp.degree = parallel_dims.dp
+    torch._inductor.config.simplefsdp.tp_enabled = parallel_dims.tp_enabled
+    torch._inductor.config.simplefsdp.pp_enabled = parallel_dims.pp_enabled
+    torch._inductor.config.simplefsdp.device_mesh = world_mesh.mesh.tolist()
+
+    print("enable reorder", torch._inductor.config.simplefsdp.enable_reorder)
+    if torch._inductor.config.simplefsdp.bucket_mode == "transformer_block":
+        print("enable block-level bucket")
+    elif torch._inductor.config.simplefsdp.bucket_mode == "greedy":
+        print("enable greedy auto bucket")
+        print(
+            "ag_comm_time_multiplier",
+            torch._inductor.config.simplefsdp.ag_comm_time_multiplier,
+        )
+        print(
+            "rs_comm_time_multiplier",
+            torch._inductor.config.simplefsdp.rs_comm_time_multiplier,
+        )
 
     if parallel_dims.tp_enabled:
         apply_tp(
@@ -329,6 +352,8 @@ def apply_compile(model: nn.Module):
     Apply torch.compile to each TransformerBlock, which makes compilation efficient due to
     repeated structure. Alternatively one can compile the whole model (after applying DP).
     """
+    # TODO(ruisizhang123): avoid recompiling error on 70B model
+    torch._dynamo.config.cache_size_limit = 128
     for layer_id, transformer_block in model.layers.named_children():
         transformer_block = torch.compile(transformer_block, fullgraph=True)
         model.layers.register_module(layer_id, transformer_block)
@@ -361,7 +386,8 @@ def apply_fsdp(
         if pp_enabled:
             # For PP, do not reshard after forward to avoid per-microbatch
             # all-gathers, which can be expensive and non-overlapped
-            reshard_after_forward = False
+            # NOTE: set reshard_after_forward to True for fair comparison with simple FSDP
+            reshard_after_forward = True
         else:
             # As an optimization, do not reshard after forward for the last
             # transformer block since FSDP would prefetch it immediately

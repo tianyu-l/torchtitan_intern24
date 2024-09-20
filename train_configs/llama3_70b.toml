@@ -37,7 +37,8 @@ compile = false
 dataset = "c4"
 
 [experimental]
-pipeline_parallel_degree = 1
+#pipeline_parallel_degree = 8
+#pipeline_parallel_split_points=["layers.10","layers.20","layers.30","layers.40","layers.50","layers.60","layers.70"]
 
 [checkpoint]
 enable_checkpoint = false

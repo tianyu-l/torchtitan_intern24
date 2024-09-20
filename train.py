@@ -10,6 +10,7 @@ import time
 from datetime import timedelta
 
 import torch
+from torch.distributed._tensor import DTensor
 from torch.distributed.elastic.multiprocessing.errors import record
 
 # context needed by meta-init with torch_spmd
@@ -139,6 +140,9 @@ def main(job_config: JobConfig):
 
     # loss function to be shared by Pipeline Parallel and SPMD training
     def loss_fn(pred, labels):
+        # TODO(ruisizhang123): temporary fix to enable async TP for full model compile
+        if isinstance(pred, DTensor):
+            pred._local_tensor = pred._local_tensor.contiguous()
         return torch.nn.functional.cross_entropy(
             pred.flatten(0, 1), labels.flatten(0, 1)
         )
@@ -162,7 +166,7 @@ def main(job_config: JobConfig):
             m.train()
 
             # TODO(lty): need to find a better way to apply torch.compile
-            if job_config.training.compile:
+            if job_config.training.compile and job_config.experimental.torch_spmd:
                 stages[i].submod = torch.compile(m, fullgraph=True)
     else:
         # apply PT-D Tensor Parallel, activation checkpointing, torch.compile, Data Parallel

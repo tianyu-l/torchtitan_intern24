@@ -78,7 +78,6 @@ def main(job_config: JobConfig):
         batch_size=job_config.training.batch_size,
         extra_args=[],
     )
-    model_flops = get_model_flops(config)
     benchmark_model = load_model(config)
     model, _ = benchmark_model.get_module()
 
@@ -104,12 +103,35 @@ def main(job_config: JobConfig):
     )
 
     # apply PT-D Tensor Parallel, activation checkpointing, torch.compile, Data Parallel
-    model = torch_spmd_parallelize(model, world_mesh, parallel_dims, job_config)
+    if job_config.experimental.torch_spmd:
+        # apply PT-D Tensor Parallel, activation checkpointing, torch.compile, Data Parallel
+        model = torch_spmd_parallelize(model, world_mesh, parallel_dims, job_config)
+    else:
+        from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
 
+        param_dtype = (TORCH_DTYPE_MAP[job_config.training.mixed_precision_param],)
+        reduce_dtype = TORCH_DTYPE_MAP[job_config.training.mixed_precision_reduce]
+        mp_policy = MixedPrecisionPolicy(
+            param_dtype=param_dtype, reduce_dtype=reduce_dtype
+        )
+        fsdp_config = {"mesh": dp_mesh, "mp_policy": mp_policy}
+
+        for name, block in model.named_children():
+            block = torch.compile(block)
+            model.register_module(name, block)
+
+        for name, block in model.named_children():
+            fully_shard(
+                block,
+                **fsdp_config,
+                reshard_after_forward=True,
+            )
+        fully_shard(model, **fsdp_config, reshard_after_forward=True)
     # update model and optimizer after applying parallelisms
     benchmark_model.set_module(model)
     optimizer = benchmark_model.get_optimizer()
-    optimizer.add_param_group({"params": model.parameters()})
+    if optimizer is not None:
+        optimizer.add_param_group({"params": model.parameters()})
 
     model.train()
 
