@@ -43,7 +43,7 @@ def torch_spmd_parallelize(
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
     # simple fsdp configs
-    torch._inductor.config.simplefsdp.bucket_mode = "transformer_block"
+    torch._inductor.config.simplefsdp.bucket_mode = "greedy"
     torch._inductor.config.simplefsdp.enable_reorder = True
     torch._inductor.config.simplefsdp.degree = parallel_dims.dp
     torch._inductor.config.simplefsdp.tp_enabled = parallel_dims.tp_enabled
