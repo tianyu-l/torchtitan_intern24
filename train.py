@@ -245,6 +245,7 @@ def main(job_config: JobConfig):
 
     # variables used to keep info for metrics logging
     losses_since_last_log = []
+    losses_for_plot = []
     ntokens_since_last_log = 0
     data_loading_times = []
     time_last_log = time.perf_counter()
@@ -329,6 +330,7 @@ def main(job_config: JobConfig):
             float8_handler.precompute_float8_dynamic_scale_for_fsdp(model_parts)
 
             losses_since_last_log.append(loss)
+            losses_for_plot.append(loss)
 
             # log metrics
             if (
@@ -416,6 +418,14 @@ def main(job_config: JobConfig):
                     timeout=timedelta(seconds=job_config.comm.train_timeout_seconds),
                     world_mesh=world_mesh,
                 )
+    if job_config.experimental.torch_spmd:
+        loss_file_name = "loss_simplefsdp.txt"
+    else:
+        loss_file_name = "loss_fsdp.txt"
+    with open(loss_file_name, "w") as f:
+        for loss in losses_for_plot:
+            f.write(f"{loss.item()}\n")
+    f.close()
 
     if torch.distributed.get_rank() == 0:
         logger.info("Sleeping 2 seconds for other ranks to complete")
