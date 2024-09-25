@@ -169,6 +169,8 @@ def parallelize_llama(
                 enable_compile=job_config.training.compile,
                 enable_compiled_autograd=job_config.experimental.enable_compiled_autograd,
             )
+            
+    return model
 
 
 def apply_tp(
