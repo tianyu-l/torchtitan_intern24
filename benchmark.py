@@ -24,7 +24,7 @@ from torchtitan.config_manager import JobConfig, TORCH_DTYPE_MAP
 from torchtitan.logging import init_logger, logger
 from torchtitan.metrics import build_gpu_memory_monitor
 from torchtitan.parallelisms import ParallelDims
-from torchtitan.parallelisms.parallelize_llama import torch_spmd_parallelize
+from torchtitan.parallelisms.parallelize_llama import torch_spmd_parallelize, apply_ac_vision
 from torchtitan.profiling import maybe_enable_memory_snapshot, maybe_enable_profiling
 
 
@@ -108,26 +108,55 @@ def main(job_config: JobConfig):
         model = torch_spmd_parallelize(model, world_mesh, parallel_dims, job_config)
     else:
         from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
-
-        param_dtype = (TORCH_DTYPE_MAP[job_config.training.mixed_precision_param],)
+        if job_config.activation_checkpoint.mode != "none":
+            apply_ac_vision(model, job_config.activation_checkpoint)
+        param_dtype = TORCH_DTYPE_MAP[job_config.training.mixed_precision_param]
         reduce_dtype = TORCH_DTYPE_MAP[job_config.training.mixed_precision_reduce]
         mp_policy = MixedPrecisionPolicy(
             param_dtype=param_dtype, reduce_dtype=reduce_dtype
         )
         fsdp_config = {"mesh": dp_mesh, "mp_policy": mp_policy}
+        
+        if job_config.training.compile:
+            for idx, (name, block) in enumerate(model.vision_model.transformer.layers.named_children()):
+                block = torch.compile(block, fullgraph=True)
+                model.vision_model.transformer.layers.register_module(name, block)
+            for idx, (name, block) in enumerate(model.vision_model.global_transformer.layers.named_children()):
+                block = torch.compile(block, fullgraph=True)
+                model.vision_model.global_transformer.layers.register_module(name, block)
+            for idx, (name, block) in enumerate(model.language_model.model.layers.named_children()):
+                block = torch.compile(block, fullgraph=True)
+                model.language_model.model.layers.register_module(name, block)
 
-        for name, block in model.named_children():
-            block = torch.compile(block)
-            model.register_module(name, block)
-
-        for name, block in model.named_children():
+        for idx, (name, block) in enumerate(model.vision_model.transformer.layers.named_children()):
+            reshard_after_forward = False
             fully_shard(
                 block,
                 **fsdp_config,
-                reshard_after_forward=True,
+                reshard_after_forward=reshard_after_forward,
+            )
+
+        for idx, (name, block) in enumerate(model.vision_model.global_transformer.layers.named_children()):
+            reshard_after_forward = True
+            fully_shard(
+                block,
+                **fsdp_config,
+                reshard_after_forward=reshard_after_forward,
+            )
+
+        total_module_num = len(list(model.language_model.model.layers.children()))
+        for idx, (name, block) in enumerate(model.language_model.model.layers.named_children()):
+            if idx < total_module_num - 1:
+                reshard_after_forward = True
+            else:
+                reshard_after_forward = False
+            fully_shard(
+                block,
+                **fsdp_config,
+                reshard_after_forward=reshard_after_forward,
             )
         fully_shard(model, **fsdp_config, reshard_after_forward=True)
-    # update model and optimizer after applying parallelisms
+
     benchmark_model.set_module(model)
     optimizer = benchmark_model.get_optimizer()
     if optimizer is not None:
@@ -155,6 +184,9 @@ def main(job_config: JobConfig):
         f"global batch size {job_config.training.batch_size * dp_degree}, "
         f"total steps {job_config.training.steps}"
     )
+    ntokens_since_last_log = 0
+    time_last_log = time.perf_counter()
+
     with maybe_enable_profiling(
         job_config, global_step=train_state.step
     ) as torch_profiler, maybe_enable_memory_snapshot(
@@ -167,7 +199,7 @@ def main(job_config: JobConfig):
             torch.cuda.synchronize()
             start_event = torch.cuda.Event(enable_timing=True)
             end_event = torch.cuda.Event(enable_timing=True)
-
+            ntokens_since_last_log += benchmark_model.example_inputs['labels'].numel()
             # Collect time_ns() instead of time() which does not provide better precision than 1
             # second according to https://docs.python.org/3/library/time.html#time.time.
             t0 = time.time_ns()
@@ -213,6 +245,10 @@ def main(job_config: JobConfig):
                     global_avg_loss, global_max_loss = avg_loss, max_loss
 
                 gpu_mem_stats = gpu_memory_monitor.get_peak_stats()
+                subtime = time.perf_counter() - time_last_log
+                wps = ntokens_since_last_log / (
+                    subtime * parallel_dims.model_parallel_size
+                )
 
                 logger.info(
                     f"{color.cyan}step: {train_state.step:2}  "
@@ -220,9 +256,11 @@ def main(job_config: JobConfig):
                     f"{color.yellow}memory: {gpu_mem_stats.max_reserved_gib:5.2f}GiB"
                     f"({gpu_mem_stats.max_reserved_pct:.2f}%)  "
                     f"{color.blue}GPU time: {time_delta[0]:.3f}ms  "
-                    f"CPU wall time: {time_delta[1]:.3f}ms{color.reset}"
+                    f"CPU wall time: {time_delta[1]:.3f}ms  "
+                    f"wps: {round(wps)}{color.reset} "
                 )
-
+                ntokens_since_last_log = 0
+                time_last_log = time.perf_counter()
                 losses_since_last_log.clear()
                 gpu_memory_monitor.reset_peak_stats()
 
