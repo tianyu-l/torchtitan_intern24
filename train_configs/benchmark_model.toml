@@ -19,10 +19,10 @@ save_tb_folder = "tb"
 
 [model]
 # name = "resnet50"
-name = "hf_GPT2"
+name = "llama3_2_11B"
 
 [training]
-batch_size = 8
+batch_size = 1
 max_norm = 1.0  # grad norm clipping
 steps = 10
 data_parallel_degree = -1
@@ -32,4 +32,4 @@ compile = true
 torch_spmd = true
 
 [activation_checkpoint]
-mode = 'none'  # ['none', 'selective', 'full']
+mode = 'full'  # ['none', 'selective', 'full']
