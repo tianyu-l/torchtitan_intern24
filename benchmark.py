@@ -24,7 +24,10 @@ from torchtitan.config_manager import JobConfig, TORCH_DTYPE_MAP
 from torchtitan.logging import init_logger, logger
 from torchtitan.metrics import build_gpu_memory_monitor
 from torchtitan.parallelisms import ParallelDims
-from torchtitan.parallelisms.parallelize_llama import torch_spmd_parallelize, apply_ac_vision
+from torchtitan.parallelisms.parallelize_llama import (
+    apply_ac_vision,
+    torch_spmd_parallelize,
+)
 from torchtitan.profiling import maybe_enable_memory_snapshot, maybe_enable_profiling
 
 
@@ -108,6 +111,7 @@ def main(job_config: JobConfig):
         model = torch_spmd_parallelize(model, world_mesh, parallel_dims, job_config)
     else:
         from torch.distributed._composable.fsdp import fully_shard, MixedPrecisionPolicy
+
         if job_config.activation_checkpoint.mode != "none":
             apply_ac_vision(model, job_config.activation_checkpoint)
         param_dtype = TORCH_DTYPE_MAP[job_config.training.mixed_precision_param]
@@ -116,19 +120,29 @@ def main(job_config: JobConfig):
             param_dtype=param_dtype, reduce_dtype=reduce_dtype
         )
         fsdp_config = {"mesh": dp_mesh, "mp_policy": mp_policy}
-        
+
         if job_config.training.compile:
-            for idx, (name, block) in enumerate(model.vision_model.transformer.layers.named_children()):
+            for idx, (name, block) in enumerate(
+                model.vision_model.transformer.layers.named_children()
+            ):
                 block = torch.compile(block, fullgraph=True)
                 model.vision_model.transformer.layers.register_module(name, block)
-            for idx, (name, block) in enumerate(model.vision_model.global_transformer.layers.named_children()):
+            for idx, (name, block) in enumerate(
+                model.vision_model.global_transformer.layers.named_children()
+            ):
                 block = torch.compile(block, fullgraph=True)
-                model.vision_model.global_transformer.layers.register_module(name, block)
-            for idx, (name, block) in enumerate(model.language_model.model.layers.named_children()):
+                model.vision_model.global_transformer.layers.register_module(
+                    name, block
+                )
+            for idx, (name, block) in enumerate(
+                model.language_model.model.layers.named_children()
+            ):
                 block = torch.compile(block, fullgraph=True)
                 model.language_model.model.layers.register_module(name, block)
 
-        for idx, (name, block) in enumerate(model.vision_model.transformer.layers.named_children()):
+        for idx, (name, block) in enumerate(
+            model.vision_model.transformer.layers.named_children()
+        ):
             reshard_after_forward = False
             fully_shard(
                 block,
@@ -136,7 +150,9 @@ def main(job_config: JobConfig):
                 reshard_after_forward=reshard_after_forward,
             )
 
-        for idx, (name, block) in enumerate(model.vision_model.global_transformer.layers.named_children()):
+        for idx, (name, block) in enumerate(
+            model.vision_model.global_transformer.layers.named_children()
+        ):
             reshard_after_forward = True
             fully_shard(
                 block,
@@ -145,7 +161,9 @@ def main(job_config: JobConfig):
             )
 
         total_module_num = len(list(model.language_model.model.layers.children()))
-        for idx, (name, block) in enumerate(model.language_model.model.layers.named_children()):
+        for idx, (name, block) in enumerate(
+            model.language_model.model.layers.named_children()
+        ):
             if idx < total_module_num - 1:
                 reshard_after_forward = True
             else:
@@ -199,7 +217,7 @@ def main(job_config: JobConfig):
             torch.cuda.synchronize()
             start_event = torch.cuda.Event(enable_timing=True)
             end_event = torch.cuda.Event(enable_timing=True)
-            ntokens_since_last_log += benchmark_model.example_inputs['labels'].numel()
+            ntokens_since_last_log += benchmark_model.example_inputs["labels"].numel()
             # Collect time_ns() instead of time() which does not provide better precision than 1
             # second according to https://docs.python.org/3/library/time.html#time.time.
             t0 = time.time_ns()

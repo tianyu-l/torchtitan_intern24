@@ -172,7 +172,7 @@ def parallelize_llama(
                 enable_compile=job_config.training.compile,
                 enable_compiled_autograd=job_config.experimental.enable_compiled_autograd,
             )
-            
+
     return model
 
 
@@ -345,7 +345,10 @@ def _apply_ac_to_transformer_block(module: nn.Module, ac_config):
 
 def apply_ac_vision(model: nn.Module, ac_config):
     """Apply activation checkpointing to the model."""
-    for layer_id, transformer_block in model.language_model.model.layers.named_children():
+    for (
+        layer_id,
+        transformer_block,
+    ) in model.language_model.model.layers.named_children():
         transformer_block = _apply_ac_to_transformer_block(transformer_block, ac_config)
         model.language_model.model.layers.register_module(layer_id, transformer_block)
 
