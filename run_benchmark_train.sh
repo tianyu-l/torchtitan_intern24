@@ -19,6 +19,8 @@ if [ $# -ne 0 ]; then
     overrides="$*"
 fi
 
+TORCH_NCCL_AVOID_RECORD_STREAMS=1 \
+TORCHINDUCTOR_FORCE_DISABLE_CACHES=1 \
 torchrun --nproc_per_node=${NGPU} --rdzv_backend c10d --rdzv_endpoint="localhost:0" \
 --local-ranks-filter ${LOG_RANK} --role rank --tee 3 \
 benchmark.py --job.config_file ${CONFIG_FILE} $overrides

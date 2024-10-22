@@ -43,7 +43,7 @@ def torch_spmd_parallelize(
     torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
     # simple fsdp configs
-    torch._inductor.config.simplefsdp.bucket_mode = "greedy"
+    torch._inductor.config.simplefsdp.bucket_mode = "transformer_block"
     torch._inductor.config.simplefsdp.enable_reorder = True
     torch._inductor.config.simplefsdp.degree = parallel_dims.dp
     torch._inductor.config.simplefsdp.tp_enabled = parallel_dims.tp_enabled
@@ -75,7 +75,10 @@ def torch_spmd_parallelize(
 
     ac_config = job_config.activation_checkpoint
     if ac_config.mode != "none":
-        apply_ac(model, ac_config)
+        if job_config.model.name == "llama3_2_11B":
+            apply_ac_vision(model, ac_config)
+        else:
+            apply_ac(model, ac_config)
 
     if parallel_dims.dp_enabled:
         from torch_spmd.data_parallel import data_parallel, MixedPrecisionPolicy
@@ -169,7 +172,7 @@ def parallelize_llama(
                 enable_compile=job_config.training.compile,
                 enable_compiled_autograd=job_config.experimental.enable_compiled_autograd,
             )
-            
+
     return model
 
 
@@ -338,6 +341,18 @@ def _apply_ac_to_transformer_block(module: nn.Module, ac_config):
             return ptd_checkpoint_wrapper(module, preserve_rng_state=False)
         else:
             return module
+
+
+def apply_ac_vision(model: nn.Module, ac_config):
+    """Apply activation checkpointing to the model."""
+    for (
+        layer_id,
+        transformer_block,
+    ) in model.language_model.model.layers.named_children():
+        transformer_block = _apply_ac_to_transformer_block(transformer_block, ac_config)
+        model.language_model.model.layers.register_module(layer_id, transformer_block)
+
+    logger.info(f"Applied {ac_config.mode} activation checkpointing to the model")
 
 
 def apply_ac(model: nn.Module, ac_config):
